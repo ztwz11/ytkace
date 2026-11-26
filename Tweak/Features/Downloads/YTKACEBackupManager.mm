@@ -186,9 +186,9 @@ static BOOL YTKACECopyFileToHandle(NSURL *URL, NSFileHandle *output, NSError **e
     return error == NULL || *error == nil;
 }
 
-static BOOL YTKACEWriteZip(NSURL *outputURL,
-                           NSArray<NSDictionary *> *entries,
-                           NSError **error) {
+BOOL YTKACEWriteStoredZip(NSURL *outputURL,
+                         NSArray<NSDictionary *> *entries,
+                         NSError **error) {
     NSFileManager *manager = NSFileManager.defaultManager;
     [manager removeItemAtURL:outputURL error:nil];
     [manager createFileAtPath:outputURL.path contents:nil attributes:nil];
@@ -601,7 +601,7 @@ static void YTKACERestoreDownloads(NSURL *source, NSURL *destination) {
                 if (entries != nil && !YTKACEHasBackupSpace(backups, size, &error)) {
                     entries = nil;
                 }
-                if (entries != nil && !YTKACEWriteZip(URL, entries, &error)) {
+                if (entries != nil && !YTKACEWriteStoredZip(URL, entries, &error)) {
                     [manager removeItemAtURL:URL error:nil];
                     URL = nil;
                 }

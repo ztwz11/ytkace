@@ -2,9 +2,13 @@
 
 다운로드 보관함에서 영상의 `⋯` → **Google Drive로 내보내기**를 누릅니다. 프레임 간격은 기본 10초, JPG의 긴 변은 기본 1280px입니다. 각각 1~3600초, 320~1920px 사이에서 바꿀 수 있고 다음 내보내기에 저장됩니다.
 
-내 드라이브의 `YTKACE - 영상 제목` 폴더에 `transcript.txt`, `transcript.vtt`, 타임코드가 들어간 JPG, 그리고 요청 시각과 실제 추출 시각을 기록한 `frames.csv`가 올라갑니다. MP4에 저장된 자막과 옆에 있는 `.vtt`·`.srt` 파일을 지원합니다. 다운로드 설정에서 자막을 켜고 받아야 합니다. 업로드 중 취소하거나 실패하면 이미 올라간 파일은 Drive 폴더에서 확인할 수 있습니다.
+**ZIP 공유**를 누르면 `transcript.txt`, `transcript.vtt`, 타임코드가 들어간 JPG, 그리고 요청 시각과 실제 추출 시각을 기록한 `frames.csv`를 영상 제목으로 된 ZIP 하나에 담습니다. iOS 공유 메뉴에 Drive가 표시되면 선택해 올립니다. Drive가 보이지 않으면 **파일에 저장**으로 ZIP을 저장하고 [Drive 앱에서 파일을 업로드](https://support.google.com/drive/answer/2424368?co=GENIE.Platform%3DiOS)합니다. 이 방식은 포크에 별도의 Google Cloud 인증 설정이 필요 없습니다.
 
-## Google Cloud와 IPA 설정
+MP4에 저장된 자막과 옆에 있는 `.vtt`·`.srt` 파일을 지원합니다. 다운로드 설정에서 자막을 켜고 받아야 합니다.
+
+## 선택 사항 — 앱에서 Drive에 직접 업로드
+
+아래 인증을 설정한 IPA에서는 **Drive에 직접 업로드**도 표시됩니다. 이 옵션은 각 파일을 내 드라이브의 `YTKACE - 영상 제목` 폴더에 올립니다. 업로드 중 취소하거나 실패하면 이미 올라간 파일을 폴더에서 확인할 수 있습니다.
 
 1. [Google Cloud](https://console.cloud.google.com/)에서 프로젝트를 선택하고 **Google Drive API**를 활성화합니다.
 2. OAuth 동의 화면을 설정합니다. 테스트 모드라면 업로드할 Google 계정을 테스트 사용자에 추가합니다. 요청하는 Drive 권한은 `https://www.googleapis.com/auth/drive.file`입니다.
