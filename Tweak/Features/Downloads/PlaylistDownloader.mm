@@ -309,8 +309,7 @@ static void YTKACERunPlaylistQueue(NSArray<NSDictionary *> *queue,
                                    NSUInteger index,
                                    NSInteger quality,
                                    BOOL audioOnly,
-                                   BOOL savesToPhotos,
-                                   BOOL sharesFile,
+                                   YTKACEDownloadDestination destination,
                                    NSUInteger started,
                                    NSUInteger failed) {
     if (index >= queue.count) {
@@ -343,15 +342,14 @@ static void YTKACERunPlaylistQueue(NSArray<NSDictionary *> *queue,
                 enqueueDownloadForResponse:playerResponse
                                    quality:quality
                                  audioOnly:audioOnly
-                             savesToPhotos:savesToPhotos
-                                sharesFile:sharesFile];
+                               destination:destination];
         }
         YTKACEDownloadLog(@"playlist", @"item %lu/%lu video=%@ queued=%d error=%@",
             (unsigned long)(index + 1), (unsigned long)queue.count, videoID,
             queued, error.localizedDescription ?: @"none");
         YTKACEWaitForIdleDownloads(0, ^{
             YTKACERunPlaylistQueue(queue, index + 1, quality, audioOnly,
-                savesToPhotos, sharesFile, started + (queued ? 1 : 0),
+                destination, started + (queued ? 1 : 0),
                 failed + (queued ? 0 : 1));
         });
     });
@@ -380,19 +378,18 @@ static void YTKACEStartPlaylistDownload(NSArray<NSDictionary *> *items,
     YTKACEDownloadLog(@"playlist", @"start count=%lu quality=%ld audioOnly=%d",
         (unsigned long)queue.count, (long)quality, audioOnly);
     [YTKACEDownloadCoordinator.sharedCoordinator
-        resolvePlaylistDestinationFromView:source
-                                 audioOnly:audioOnly
-                                      then:^(BOOL savesToPhotos,
-                                             BOOL sharesFile) {
+        resolveDestinationFromView:source audioOnly:audioOnly
+        then:^(YTKACEDownloadDestination destination) {
             YTKACEShowNotice([NSString stringWithFormat:
                 YTKACELocalized(@"Preparing %lu videos"),
                 (unsigned long)queue.count]);
-            if (sharesFile) {
+            if (destination == YTKACEDownloadDestinationShare ||
+                destination == YTKACEDownloadDestinationZIP) {
                 [YTKACEDownloadCoordinator.sharedCoordinator beginBatchSharing];
             }
             YTKACEWaitForIdleDownloads(0, ^{
                 YTKACERunPlaylistQueue(queue, 0, quality, audioOnly,
-                                       savesToPhotos, sharesFile, 0, 0);
+                                       destination, 0, 0);
             });
         }];
 }

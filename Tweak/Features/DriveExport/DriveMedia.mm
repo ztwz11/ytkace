@@ -123,6 +123,10 @@ NSDictionary<NSString *, NSData *> *YTKDriveCaptionFiles(NSURL *videoURL,
         return nil;
     }
 
+    return YTKDriveCaptionFilesFromCues(cues);
+}
+
+NSDictionary<NSString *, NSData *> *YTKDriveCaptionFilesFromCues(NSArray<NSDictionary *> *cues) {
     NSMutableString *plain = [NSMutableString string];
     NSMutableString *webvtt = [NSMutableString stringWithString:@"WEBVTT\n\n"];
     for (NSDictionary *cue in cues) {

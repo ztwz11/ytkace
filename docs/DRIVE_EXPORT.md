@@ -1,5 +1,11 @@
 # Google Drive로 다운로드 내보내기
 
+YTKACE 설정의 **다운로드 → 동영상 저장 위치**에서 **자막 포함 ZIP으로 저장**을 지정하거나 **항상 묻기**를 선택해 다운로드할 때 사진 앱과 ZIP 중 고를 수 있습니다. ZIP에는 영상 파일, 타임코드 자막 TXT·VTT, JPG 프레임 및 프레임 시각 CSV가 들어갑니다. **ZIP 프레임 설정**에서 간격과 크기를 바꿀 수 있습니다.
+
+만들어진 ZIP은 파일 앱의 YTKACE 문서 폴더 아래 `YTKACE/Exports`에 저장됩니다. 저장이 끝나면 공유 메뉴에서 Drive로 올릴 수 있습니다. 영상에 자막이 없거나 ZIP을 만드는 중 문제가 생기면 영상은 YTKACE 보관함에 남습니다.
+
+## 다운로드 보관함에서 내보내기
+
 다운로드 보관함에서 영상의 `⋯` → **Google Drive로 내보내기**를 누릅니다. 프레임 간격은 기본 10초, JPG의 긴 변은 기본 1280px입니다. 각각 1~3600초, 320~1920px 사이에서 바꿀 수 있고 다음 내보내기에 저장됩니다.
 
 **ZIP 공유**를 누르면 `transcript.txt`, `transcript.vtt`, 타임코드가 들어간 JPG, 그리고 요청 시각과 실제 추출 시각을 기록한 `frames.csv`를 영상 제목으로 된 ZIP 하나에 담습니다. iOS 공유 메뉴에 Drive가 표시되면 선택해 올립니다. Drive가 보이지 않으면 **파일에 저장**으로 ZIP을 저장하고 [Drive 앱에서 파일을 업로드](https://support.google.com/drive/answer/2424368?co=GENIE.Platform%3DiOS)합니다. 이 방식은 포크에 별도의 Google Cloud 인증 설정이 필요 없습니다.

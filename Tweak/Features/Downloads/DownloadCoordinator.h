@@ -3,6 +3,14 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+typedef NS_ENUM(NSInteger, YTKACEDownloadDestination) {
+    YTKACEDownloadDestinationLibrary = 0,
+    YTKACEDownloadDestinationPhotos = 1,
+    YTKACEDownloadDestinationAsk = 2,
+    YTKACEDownloadDestinationShare = 3,
+    YTKACEDownloadDestinationZIP = 4,
+};
+
 FOUNDATION_EXPORT UIImage *YTKACEDownloadGlyphImage(void);
 
 FOUNDATION_EXPORT void YTKACESaveVideoToPhotosFile(
@@ -25,14 +33,12 @@ FOUNDATION_EXPORT void YTKACEPresentVideoListDownloadMenu(
 - (BOOL)enqueueDownloadForResponse:(id)response
                            quality:(NSInteger)quality
                          audioOnly:(BOOL)audioOnly
-                      savesToPhotos:(BOOL)savesToPhotos
-                        sharesFile:(BOOL)sharesFile;
+                       destination:(YTKACEDownloadDestination)destination;
 - (void)beginBatchSharing;
 - (void)flushBatchSharingFromView:(nullable UIView *)sourceView;
-- (void)resolvePlaylistDestinationFromView:(nullable UIView *)sourceView
-                                 audioOnly:(BOOL)audioOnly
-                                      then:(void (^)(BOOL savesToPhotos,
-                                                     BOOL sharesFile))handler;
+- (void)resolveDestinationFromView:(nullable UIView *)sourceView
+                         audioOnly:(BOOL)audioOnly
+                              then:(void (^)(YTKACEDownloadDestination destination))handler;
 - (NSDictionary *)nativeSheetAction:(NSString *)title
                                icon:(NSString *)icon
                             handler:(dispatch_block_t)handler;

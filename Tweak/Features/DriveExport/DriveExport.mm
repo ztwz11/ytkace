@@ -2,6 +2,7 @@
 #import "DriveClient.h"
 #import "DriveMedia.h"
 #import "../../Runtime/Localization.h"
+#import "../../Runtime/Preferences.h"
 #import "../Downloads/YTKACEBackupManager.h"
 
 #import <AVFoundation/AVFoundation.h>
@@ -10,6 +11,22 @@
 static NSString *const FrameIntervalKey = @"YTKACE.Preference.DriveExport.FrameInterval";
 static NSString *const FrameSizeKey = @"YTKACE.Preference.DriveExport.MaxFrameSize";
 static BOOL ExportInProgress;
+
+static NSInteger IntegerInRange(NSString *value, NSInteger minimum, NSInteger maximum) {
+    NSScanner *scanner = [NSScanner scannerWithString:value ?: @""];
+    NSInteger result = 0;
+    return [scanner scanInteger:&result] && scanner.isAtEnd && result >= minimum && result <= maximum ? result : 0;
+}
+
+static NSUInteger SavedFrameInterval(void) {
+    NSInteger interval = [NSUserDefaults.standardUserDefaults integerForKey:FrameIntervalKey];
+    return interval >= 1 && interval <= 3600 ? (NSUInteger)interval : 10;
+}
+
+static NSUInteger SavedFrameSize(void) {
+    NSInteger size = [NSUserDefaults.standardUserDefaults integerForKey:FrameSizeKey];
+    return size >= 320 && size <= 1920 ? (NSUInteger)size : 1280;
+}
 
 BOOL YTKDriveCanExport(NSURL *url) {
     return url.isFileURL && [@[@"mp4", @"mov", @"m4v", @"webm", @"mkv"]
@@ -54,11 +71,8 @@ static BOOL WriteExportFile(NSURL *directory, NSData *data, NSString *name, NSSt
 }
 
 static NSArray<NSDictionary *> *PrepareVideo(NSURL *videoURL, NSURL *directory,
-    NSUInteger interval, NSUInteger frameSize, NSProgress *job, void (^progress)(NSString *), NSError **error) {
-    NSDictionary<NSString *, NSData *> *captions = YTKDriveCaptionFiles(videoURL,
-        ^BOOL { return job.cancelled; }, error);
-    if (!captions) return nil;
-
+    NSDictionary<NSString *, NSData *> *captions, NSUInteger interval, NSUInteger frameSize,
+    NSProgress *job, void (^progress)(NSString *), NSError **error) {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:videoURL options:@{AVURLAssetPreferPreciseDurationAndTimingKey:@YES}];
     double duration = CMTimeGetSeconds(asset.duration);
     if (!std::isfinite(duration) || duration <= 0 || ![asset tracksWithMediaType:AVMediaTypeVideo].count) {
@@ -106,6 +120,60 @@ static NSArray<NSDictionary *> *PrepareVideo(NSURL *videoURL, NSURL *directory,
     }
     return WriteExportFile(directory, [csv dataUsingEncoding:NSUTF8StringEncoding], @"frames.csv",
                            @"text/csv", entries, error) ? entries : nil;
+}
+
+void YTKDriveCreateDownloadZIP(NSURL *videoURL, NSArray<NSDictionary *> *cues, NSProgress *job,
+    void (^report)(NSString *), void (^complete)(NSURL *, NSError *)) {
+    if (cues.count == 0) {
+        complete(nil, YTKDriveError(@"No timed subtitles were available for this download."));
+        return;
+    }
+    const NSUInteger interval = SavedFrameInterval();
+    const NSUInteger size = SavedFrameSize();
+    NSURL *exports = [YTKACEApplicationSupportDirectory() URLByAppendingPathComponent:@"Exports" isDirectory:YES];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSFileManager *manager = NSFileManager.defaultManager;
+        NSURL *temporary = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
+            URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
+        NSURL *staged = [temporary URLByAppendingPathComponent:@"archive.zip"];
+        NSError *error = nil;
+        BOOL written = NO;
+        void (^reportOnMain)(NSString *) = ^(NSString *stage) {
+            dispatch_async(dispatch_get_main_queue(), ^{ if (!job.cancelled) report(stage); });
+        };
+        if (!job.cancelled && [manager createDirectoryAtURL:temporary
+            withIntermediateDirectories:YES attributes:nil error:&error]) {
+            NSDictionary *captions = YTKDriveCaptionFilesFromCues(cues);
+            NSArray<NSDictionary *> *media = PrepareVideo(videoURL, temporary, captions, interval,
+                size, job, reportOnMain, &error);
+            if (media != nil && !job.cancelled) {
+                NSString *name = [@"video" stringByAppendingPathExtension:videoURL.pathExtension];
+                NSArray *entries = [@[@{@"url": videoURL, @"name": name}] arrayByAddingObjectsFromArray:media];
+                reportOnMain(YTKACELocalized(@"Creating ZIP…"));
+                @try {
+                    written = YTKACEWriteStoredZip(staged, entries, &error);
+                } @catch (__unused NSException *exception) {
+                    error = YTKDriveError(@"Could not create the ZIP file.");
+                }
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSError *saveError = error;
+            NSURL *archive = nil;
+            if (written && !job.cancelled && [manager createDirectoryAtURL:exports
+                withIntermediateDirectories:YES attributes:nil error:&saveError]) {
+                NSString *title = videoURL.lastPathComponent.stringByDeletingPathExtension;
+                NSURL *destination = [exports URLByAppendingPathComponent:[title stringByAppendingPathExtension:@"zip"]];
+                for (NSUInteger suffix = 2; [manager fileExistsAtPath:destination.path]; suffix++) {
+                    NSString *numbered = [NSString stringWithFormat:@"%@ %lu.zip", title, (unsigned long)suffix];
+                    destination = [exports URLByAppendingPathComponent:numbered];
+                }
+                if ([manager moveItemAtURL:staged toURL:destination error:&saveError]) archive = destination;
+            }
+            [manager removeItemAtURL:temporary error:nil];
+            complete(archive, saveError);
+        });
+    });
 }
 
 static BOOL UploadFiles(YTKDriveClient *client, NSArray<NSDictionary *> *entries, NSString *title,
@@ -188,7 +256,10 @@ static void StartExport(UIViewController *presenter, NSURL *videoURL, NSUInteger
             BOOL success = NO;
             if ([NSFileManager.defaultManager createDirectoryAtURL:staging
                 withIntermediateDirectories:YES attributes:nil error:&error]) {
-                entries = PrepareVideo(videoURL, staging, interval, size, job, report, &error);
+                NSDictionary *captions = YTKDriveCaptionFiles(videoURL, ^BOOL { return job.cancelled; }, &error);
+                if (captions != nil) {
+                    entries = PrepareVideo(videoURL, staging, captions, interval, size, job, report, &error);
+                }
             }
             if (entries && !job.cancelled) {
                 if (direct) {
@@ -242,12 +313,6 @@ static void StartExport(UIViewController *presenter, NSURL *videoURL, NSUInteger
     else begin(nil);
 }
 
-static NSInteger IntegerInRange(NSString *value, NSInteger minimum, NSInteger maximum) {
-    NSScanner *scanner = [NSScanner scannerWithString:value ?: @""];
-    NSInteger result = 0;
-    return [scanner scanInteger:&result] && scanner.isAtEnd && result >= minimum && result <= maximum ? result : 0;
-}
-
 static void AfterDismissal(UIViewController *presenter, dispatch_block_t present) {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIViewController *closing = presenter.presentedViewController;
@@ -259,27 +324,29 @@ static void AfterDismissal(UIViewController *presenter, dispatch_block_t present
     });
 }
 
-void YTKDriveShowExportOptions(UIViewController *presenter, NSURL *videoURL) {
+static void ShowFrameOptions(UIViewController *presenter, NSURL *videoURL) {
     AfterDismissal(presenter, ^{
-        if (ExportInProgress) {
+        BOOL launchingExport = videoURL != nil;
+        if (launchingExport && ExportInProgress) {
             ShowResult(presenter, YTKACELocalized(@"A Drive export is already running."), nil);
             return;
         }
-        BOOL directAvailable = YTKDriveClient.configurationProblem == nil;
+        BOOL directAvailable = launchingExport && YTKDriveClient.configurationProblem == nil;
         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-        NSInteger interval = [defaults integerForKey:FrameIntervalKey] ?: 10;
-        NSInteger size = [defaults integerForKey:FrameSizeKey] ?: 1280;
-        UIAlertController *options = [UIAlertController alertControllerWithTitle:YTKDriveExportTitle()
-            message:YTKACELocalized(@"Share a ZIP of the timed captions and JPG frames to Drive, or save it to Files.")
+        NSString *title = launchingExport ? YTKDriveExportTitle() : YTKACELocalized(@"ZIP Frame Settings");
+        NSString *message = launchingExport
+            ? YTKACELocalized(@"Share a ZIP of the timed captions and JPG frames to Drive, or save it to Files.")
+            : YTKACELocalized(@"Choose the interval and size for JPG frames in ZIP exports.");
+        UIAlertController *options = [UIAlertController alertControllerWithTitle:title message:message
             preferredStyle:UIAlertControllerStyleAlert];
         [options addTextFieldWithConfigurationHandler:^(UITextField *field) {
             field.keyboardType = UIKeyboardTypeNumberPad;
-            field.text = [@(interval) stringValue];
+            field.text = [@(SavedFrameInterval()) stringValue];
             field.placeholder = field.accessibilityLabel = YTKACELocalized(@"Frame interval in seconds (1–3600)");
         }];
         [options addTextFieldWithConfigurationHandler:^(UITextField *field) {
             field.keyboardType = UIKeyboardTypeNumberPad;
-            field.text = [@(size) stringValue];
+            field.text = [@(SavedFrameSize()) stringValue];
             field.placeholder = field.accessibilityLabel = YTKACELocalized(@"Longest edge in pixels (320–1920)");
         }];
         options.message = [options.message stringByAppendingFormat:@"\n\n%@\n%@",
@@ -299,10 +366,12 @@ void YTKDriveShowExportOptions(UIViewController *presenter, NSURL *videoURL) {
                     }
                     [defaults setInteger:seconds forKey:FrameIntervalKey];
                     [defaults setInteger:pixels forKey:FrameSizeKey];
-                    StartExport(presenter, videoURL, (NSUInteger)seconds, (NSUInteger)pixels, direct);
+                    if (launchingExport) {
+                        StartExport(presenter, videoURL, (NSUInteger)seconds, (NSUInteger)pixels, direct);
+                    }
                 });
         };
-        [options addAction:[UIAlertAction actionWithTitle:YTKACELocalized(@"Share ZIP")
+        [options addAction:[UIAlertAction actionWithTitle:YTKACELocalized(launchingExport ? @"Share ZIP" : @"Save")
             style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { start(NO); }]];
         if (directAvailable) {
             [options addAction:[UIAlertAction actionWithTitle:YTKACELocalized(@"Upload directly to Drive")
@@ -310,4 +379,12 @@ void YTKDriveShowExportOptions(UIViewController *presenter, NSURL *videoURL) {
         }
         [presenter presentViewController:options animated:YES completion:nil];
     });
+}
+
+void YTKDriveShowExportOptions(UIViewController *presenter, NSURL *videoURL) {
+    ShowFrameOptions(presenter, videoURL);
+}
+
+void YTKDriveShowFrameSettings(UIViewController *presenter) {
+    ShowFrameOptions(presenter, nil);
 }

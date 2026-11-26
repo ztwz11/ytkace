@@ -2,6 +2,8 @@
 #import "../UI/OverlayButtonHost.h"
 #import "YTKACESettingsSearch.h"
 #import "../Features/Downloads/SABRDownloader.h"
+#import "../Features/Downloads/DownloadCoordinator.h"
+#import "../Features/DriveExport/DriveExport.h"
 #import "YTKACERootOptionsController.h"
 #import "YTKACETabEditorController.h"
 #import "YTKACEActionBarLayoutView.h"
@@ -2343,8 +2345,12 @@ static NSDictionary *YTKACEDownloadsDefinition(void) {
                          @"YTKACE.Preference.Downloads.PlaylistEnabled", @"", @""),
             YTKACEPicker(@"Save Videos To",
                          @"YTKACE.Preference.Downloads.SaveLocation",
-                         @[@"YTKACE Library", @"Photos", @"Ask", @"Share Sheet"],
-                         @[@0, @1, @2, @3], 0, @"", @""),
+                         @[@"YTKACE Library", @"Photos", @"Always Ask", @"Share Sheet", @"ZIP with Subtitles"],
+                         @[@(YTKACEDownloadDestinationLibrary), @(YTKACEDownloadDestinationPhotos),
+                           @(YTKACEDownloadDestinationAsk), @(YTKACEDownloadDestinationShare),
+                           @(YTKACEDownloadDestinationZIP)], YTKACEDownloadDestinationLibrary, @"", @""),
+            YTKACEActionDetail(@"ZIP Frame Settings", @"Choose the interval and size for JPG frames in ZIP exports.",
+                ^(UIViewController *controller) { YTKDriveShowFrameSettings(controller); }),
             YTKACEPicker(@"Save Audio To",
                          @"YTKACE.Preference.Downloads.AudioSaveLocation",
                          @[@"YTKACE Library", @"Photos", @"Ask", @"Share Sheet"],
