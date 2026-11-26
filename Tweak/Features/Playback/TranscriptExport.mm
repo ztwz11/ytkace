@@ -6,6 +6,7 @@
 #import "../../UI/Notice.h"
 #import "../../UI/OverlayButtonHost.h"
 #import "../Downloads/DownloadLog.h"
+#import "../Downloads/StreamResolver.h"
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -32,8 +33,7 @@ static id YTKACETranscriptPlayer(UIView *view) {
     return nil;
 }
 
-static NSArray *YTKACETranscriptTracks(id player) {
-    id video = YTKACETranscriptSend(player, @"activeVideo");
+static NSArray *YTKACETranscriptTracks(id player, id video) {
     id tracks = YTKACETranscriptSend(video, @"availableCaptionTracks")
         ?: YTKACETranscriptSend(player, @"availableCaptionTracks");
     return [tracks isKindOfClass:NSArray.class] ? tracks : nil;
@@ -504,21 +504,81 @@ static UIViewController *YTKACETranscriptPresenter(void) {
     return controller;
 }
 
-static void YTKACEShareTranscript(NSString *text, UIView *sourceView) {
-    UIViewController *presenter = YTKACETranscriptPresenter();
-    if (presenter == nil) return;
-    UIActivityViewController *sheet =
-        [[UIActivityViewController alloc] initWithActivityItems:@[text]
-                                          applicationActivities:nil];
-    UIPopoverPresentationController *popover = sheet.popoverPresentationController;
-    if (popover != nil) {
-        popover.sourceView = sourceView ?: presenter.view;
-        popover.sourceRect = CGRectMake(
-            CGRectGetMidX((sourceView ?: presenter.view).bounds),
-            CGRectGetMidY((sourceView ?: presenter.view).bounds), 1.0, 1.0);
-        popover.permittedArrowDirections = 0;
+static NSString *YTKACETranscriptFileName(id player, id video) {
+    NSArray<NSString *> *titleSelectors = @[@"videoTitle", @"title"];
+    NSString *title = YTKACEFormattedText(YTKACEProbe(video, titleSelectors));
+    if (title.length == 0) {
+        id videoData = YTKACETranscriptSend(video, @"videoData");
+        title = YTKACEFormattedText(YTKACEProbe(videoData, titleSelectors));
     }
-    [presenter presentViewController:sheet animated:YES completion:nil];
+    if (title.length == 0) {
+        NSArray<NSString *> *responseSelectors = @[@"contentPlayerResponse", @"playerResponse"];
+        id response = YTKACEProbe(video, responseSelectors) ?: YTKACEProbe(player, responseSelectors);
+        title = [YTKACEStreamResolver titleFromPlayerResponse:response ?: player];
+    }
+
+    NSMutableCharacterSet *invalid = [NSCharacterSet.controlCharacterSet mutableCopy];
+    [invalid addCharactersInString:@"/\\:*?\"<>|"];
+    NSMutableCharacterSet *edges = [NSCharacterSet.whitespaceAndNewlineCharacterSet mutableCopy];
+    [edges addCharactersInString:@"."];
+    NSString *clean = [[[title componentsSeparatedByCharactersInSet:invalid]
+        componentsJoinedByString:@"-"] stringByTrimmingCharactersInSet:edges];
+    NSMutableString *stem = [NSMutableString string];
+    // Keep the whole path component below 255 UTF-8 bytes, including ".txt".
+    __block NSUInteger remainingBytes = 240;
+    [clean enumerateSubstringsInRange:NSMakeRange(0, clean.length)
+        options:NSStringEnumerationByComposedCharacterSequences
+        usingBlock:^(NSString *part, NSRange range, NSRange enclosingRange, BOOL *stop) {
+            (void)range;
+            (void)enclosingRange;
+            NSUInteger bytes = [part lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+            if (bytes > remainingBytes) {
+                *stop = YES;
+                return;
+            }
+            [stem appendString:part];
+            remainingBytes -= bytes;
+        }];
+    NSString *name = [stem stringByTrimmingCharactersInSet:edges];
+    if (name.length == 0) name = YTKACELocalized(@"Transcript");
+    return [name stringByAppendingPathExtension:@"txt"];
+}
+
+static void YTKACEShareTranscriptFile(NSString *text, NSString *fileName, UIView *sourceView) {
+    __weak UIView *weakSourceView = sourceView;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSFileManager *manager = NSFileManager.defaultManager;
+        NSURL *directory = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
+            URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
+        NSURL *file = [directory URLByAppendingPathComponent:fileName isDirectory:NO];
+        BOOL saved = [manager createDirectoryAtURL:directory
+            withIntermediateDirectories:YES attributes:nil error:nil] &&
+            [text writeToURL:file atomically:YES encoding:NSUTF8StringEncoding error:nil];
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIViewController *presenter = YTKACETranscriptPresenter();
+            if (!saved || presenter.viewIfLoaded.window == nil) {
+                [manager removeItemAtURL:directory error:nil];
+                YTKACEShowNotice(YTKACELocalized(@"Could not prepare the transcript file."));
+                return;
+            }
+            UIActivityViewController *sheet =
+                [[UIActivityViewController alloc] initWithActivityItems:@[file]
+                                                  applicationActivities:nil];
+            UIPopoverPresentationController *popover = sheet.popoverPresentationController;
+            UIView *anchor = weakSourceView;
+            if (anchor.window != presenter.view.window) anchor = presenter.view;
+            popover.sourceView = anchor;
+            popover.sourceRect = CGRectMake(
+                CGRectGetMidX(anchor.bounds), CGRectGetMidY(anchor.bounds), 1.0, 1.0);
+            popover.permittedArrowDirections = 0;
+            sheet.completionWithItemsHandler = ^(__unused UIActivityType activityType,
+                __unused BOOL completed, __unused NSArray *items, __unused NSError *error) {
+                [NSFileManager.defaultManager removeItemAtURL:directory error:nil];
+            };
+            [presenter presentViewController:sheet animated:YES completion:nil];
+        });
+    });
 }
 
 static void YTKACEFetchTranscript(id track,
@@ -556,7 +616,7 @@ static void YTKACEFetchTranscript(id track,
     return shared;
 }
 
-- (void)deliver:(id)track timestamps:(BOOL)timestamps share:(BOOL)share {
+- (void)deliver:(id)track timestamps:(BOOL)timestamps fileName:(NSString *)fileName {
     __weak YTKACETranscriptCoordinator *weakSelf = self;
     YTKACEShowNotice(YTKACELocalized(@"Loading transcript…"));
     YTKACEFetchTranscript(track, timestamps, ^(NSString *text) {
@@ -564,8 +624,8 @@ static void YTKACEFetchTranscript(id track,
             YTKACEShowNotice(YTKACELocalized(@"No transcript available"));
             return;
         }
-        if (share) {
-            YTKACEShareTranscript(text, weakSelf.button);
+        if (fileName != nil) {
+            YTKACEShareTranscriptFile(text, fileName, weakSelf.button);
             return;
         }
         UIPasteboard.generalPasteboard.string = text;
@@ -573,29 +633,31 @@ static void YTKACEFetchTranscript(id track,
     });
 }
 
-- (void)presentOptionsForTrack:(id)track {
+- (void)presentOptionsForTrack:(id)track fileName:(NSString *)fileName {
     __weak YTKACETranscriptCoordinator *weakSelf = self;
     YTKACEPresentNativeSheet(YTKACELocalized(@"Transcript"),
                              YTKACETrackLabel(track),
                              self.button, @[
         @{ @"title": YTKACELocalized(@"Copy Text"),
-           @"handler": ^{ [weakSelf deliver:track timestamps:NO share:NO]; } },
+           @"handler": ^{ [weakSelf deliver:track timestamps:NO fileName:nil]; } },
         @{ @"title": YTKACELocalized(@"Copy With Timestamps"),
-           @"handler": ^{ [weakSelf deliver:track timestamps:YES share:NO]; } },
-        @{ @"title": YTKACELocalized(@"Share…"),
-           @"handler": ^{ [weakSelf deliver:track timestamps:YES share:YES]; } }
+           @"handler": ^{ [weakSelf deliver:track timestamps:YES fileName:nil]; } },
+        @{ @"title": YTKACELocalized(@"Share Transcript File…"),
+           @"handler": ^{ [weakSelf deliver:track timestamps:YES fileName:fileName]; } }
     ]);
 }
 
 - (void)presentTranscript {
     id player = YTKACETranscriptPlayer(self.overlay);
-    NSArray *tracks = YTKACETranscriptTracks(player);
+    id video = YTKACETranscriptSend(player, @"activeVideo");
+    NSArray *tracks = YTKACETranscriptTracks(player, video);
     if (tracks.count == 0) {
         YTKACEShowNotice(YTKACELocalized(@"No captions for this video"));
         return;
     }
+    NSString *fileName = YTKACETranscriptFileName(player, video);
     if (tracks.count == 1) {
-        [self presentOptionsForTrack:tracks.firstObject];
+        [self presentOptionsForTrack:tracks.firstObject fileName:fileName];
         return;
     }
     __weak YTKACETranscriptCoordinator *weakSelf = self;
@@ -603,7 +665,7 @@ static void YTKACEFetchTranscript(id track,
     for (id track in tracks) {
         [actions addObject:@{
             @"title": YTKACETrackLabel(track),
-            @"handler": ^{ [weakSelf presentOptionsForTrack:track]; }
+            @"handler": ^{ [weakSelf presentOptionsForTrack:track fileName:fileName]; }
         }];
     }
     YTKACEPresentNativeSheet(YTKACELocalized(@"Transcript"),

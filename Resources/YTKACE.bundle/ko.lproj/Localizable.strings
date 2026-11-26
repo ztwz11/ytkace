@@ -763,6 +763,8 @@ CC BY-NC-SA 4.0 라이선스가 적용됩니다.";
 "Loading transcript…" = "스크립트 불러오는 중…";
 "No transcript available" = "스크립트가 없습니다";
 "Transcript copied" = "스크립트를 복사했습니다";
+"Share Transcript File…" = "스크립트 파일 공유…";
+"Could not prepare the transcript file." = "스크립트 파일을 준비하지 못했습니다.";
 "Transcript" = "스크립트";
 "Copy Text" = "텍스트 복사";
 "Copy With Timestamps" = "타임스탬프 포함 복사";
