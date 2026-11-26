@@ -60,8 +60,8 @@ static BOOL ExportVideo(NSURL *videoURL, NSUInteger interval, NSUInteger frameSi
     AVAssetImageGenerator *generator = [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
     generator.appliesPreferredTrackTransform = YES;
     generator.maximumSize = CGSizeMake(frameSize, frameSize);
-    generator.requestedTimeToleranceBefore = CMTimeMake(1, 30);
-    generator.requestedTimeToleranceAfter = CMTimeMake(1, 30);
+    generator.requestedTimeToleranceBefore = CMTimeMake(1, 10);
+    generator.requestedTimeToleranceAfter = CMTimeMake(1, 10);
     CMTime firstTime = kCMTimeInvalid;
     NSData *firstFrame = FrameAt(generator, 0, &firstTime, error);
     if (!firstFrame) return NO;
@@ -81,22 +81,31 @@ static BOOL ExportVideo(NSURL *videoURL, NSUInteger interval, NSUInteger frameSi
 
     NSMutableString *csv = [NSMutableString stringWithString:@"file,requested_time,actual_time\n"];
     for (NSUInteger frame = 0; frame < frameCount; frame++) {
+        if (client.cancelled) return NO;
+        NSError *frameError = nil;
+        BOOL uploaded = NO;
         @autoreleasepool {
-            if (client.cancelled) return NO;
             NSUInteger seconds = frame * interval;
             CMTime actual = firstTime;
-            NSData *jpeg = frame == 0 ? firstFrame : FrameAt(generator, seconds, &actual, error);
-            if (!jpeg) return NO;
+            NSData *jpeg = frame == 0 ? firstFrame : FrameAt(generator, seconds, &actual, &frameError);
             NSString *requested = YTKDriveTimestamp(seconds);
             NSString *filename = [NSString stringWithFormat:@"frame_%@.jpg",
                 [requested stringByReplacingOccurrencesOfString:@":" withString:@"-"]];
-            if (![client upload:jpeg name:filename mime:@"image/jpeg" fileID:ids[index++] folder:folder error:error]) return NO;
-            NSString *actualTime = CMTIME_IS_NUMERIC(actual) ? YTKDriveTimestamp(CMTimeGetSeconds(actual)) : @"";
-            [csv appendFormat:@"%@,%@,%@\n", filename, requested, actualTime];
-            if (frame == 0 || (frame + 1) % 5 == 0 || frame + 1 == frameCount) {
-                progress([NSString stringWithFormat:YTKACELocalized(@"Uploaded %lu of %lu frames."),
-                    (unsigned long)(frame + 1), (unsigned long)frameCount]);
+            uploaded = jpeg && [client upload:jpeg name:filename mime:@"image/jpeg" fileID:ids[index]
+                folder:folder error:&frameError];
+            if (uploaded) {
+                NSString *actualTime = CMTIME_IS_NUMERIC(actual) ? YTKDriveTimestamp(CMTimeGetSeconds(actual)) : @"";
+                [csv appendFormat:@"%@,%@,%@\n", filename, requested, actualTime];
             }
+        }
+        if (!uploaded) {
+            if (error) *error = frameError;
+            return NO;
+        }
+        index++;
+        if (frame == 0 || (frame + 1) % 5 == 0 || frame + 1 == frameCount) {
+            progress([NSString stringWithFormat:YTKACELocalized(@"Uploaded %lu of %lu frames."),
+                (unsigned long)(frame + 1), (unsigned long)frameCount]);
         }
     }
     return [client upload:[csv dataUsingEncoding:NSUTF8StringEncoding] name:@"frames.csv" mime:@"text/csv"
