@@ -14,6 +14,7 @@
 #import "../Features/Downloads/MediaArtwork.h"
 #import "../Features/Downloads/DownloadSponsor.h"
 #import "../Features/Downloads/DownloadProgressView.h"
+#import "../Features/DriveExport/DriveExport.h"
 
 #import <AVFoundation/AVFoundation.h>
 #import <ImageIO/ImageIO.h>
@@ -1486,6 +1487,10 @@ didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
                              symbol:@"square.and.arrow.up" handler:^(__unused UIAlertAction *action) {
             [self shareURL:url sourceView:sourceView];
         }] ?: NSNull.null,
+        (YTKDriveCanExport(url) ? [self nativeActionWithTitle:YTKDriveExportTitle() asset:@""
+            symbol:@"icloud.and.arrow.up" handler:^(__unused UIAlertAction *action) {
+                YTKDriveShowExportOptions(self, url);
+            }] : nil) ?: NSNull.null,
         [self nativeActionWithTitle:YTKACELocalized(@"Delete") asset:@"delete_24pt_3x_Normal"
                              symbol:@"trash" handler:^(__unused UIAlertAction *action) {
             [self deleteURL:url];
@@ -1537,6 +1542,12 @@ didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
         ^(__unused UIAlertAction *action) {
             [self shareURL:url sourceView:sourceView];
         })];
+    if (YTKDriveCanExport(url)) {
+        [menu addAction:YTKACEMenuAction(YTKDriveExportTitle(), @"icloud.and.arrow.up", UIAlertActionStyleDefault,
+            ^(__unused UIAlertAction *action) {
+                YTKDriveShowExportOptions(self, url);
+            })];
+    }
     [menu addAction:YTKACEMenuAction(YTKACELocalized(@"Delete"), @"trash", UIAlertActionStyleDestructive,
         ^(__unused UIAlertAction *action) {
             [self deleteURL:url];

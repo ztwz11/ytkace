@@ -44,6 +44,7 @@ rm -rf "$APP/Extensions/AppMigrationExtension.appex"
 rm -rf "$APP/_CodeSignature"
 find "$APP" -maxdepth 1 -type f \( -name 'YTK@*' -o -name 'YTK-*' \) -delete
 python3 "$ROOT/Tools/sanitize_plist.py" "$APP/Info.plist"
+python3 "$ROOT/Tools/configure_drive_export.py" "$APP/Info.plist"
 
 python3 "$ROOT/Tools/macho_inject.py" "$MAIN" \
   --add-load '@rpath/YTKACE.dylib'

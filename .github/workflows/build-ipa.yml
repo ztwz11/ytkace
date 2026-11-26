@@ -13,6 +13,14 @@ on:
         required: false
         default: "https://www.dropbox.com/scl/fi/0pa15ymo1crqoh37ua14v/com.google.ios.youtube-21.47.6-eeveedecrypter.ipa?rlkey=q66okvz57iox2harvkra17cij&st=kj9fensp&dl=1"
         type: string
+      drive_ios_client_id:
+        description: Google OAuth iOS client ID for Drive export (optional)
+        required: false
+        type: string
+      drive_ios_bundle_id:
+        description: Installed app bundle ID registered with the Google iOS client (optional)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -83,6 +91,9 @@ jobs:
 
       - name: Inject
         id: inject
+        env:
+          YTKACE_DRIVE_IOS_CLIENT_ID: ${{ inputs.drive_ios_client_id || vars.YTKACE_DRIVE_IOS_CLIENT_ID }}
+          YTKACE_DRIVE_IOS_BUNDLE_ID: ${{ inputs.drive_ios_bundle_id || vars.YTKACE_DRIVE_IOS_BUNDLE_ID }}
         run: |
           mkdir deb-root
           dpkg-deb -x packages/*.deb deb-root

@@ -33,6 +33,9 @@ YTKACE_FILES = \
 	Tweak/Features/Downloads/DownloadLog.mm \
 	Tweak/Features/Downloads/DownloadProgressView.mm \
 	Tweak/Features/Downloads/DownloadCoordinator.mm \
+	Tweak/Features/DriveExport/DriveClient.mm \
+	Tweak/Features/DriveExport/DriveMedia.mm \
+	Tweak/Features/DriveExport/DriveExport.mm \
 	Tweak/Features/Downloads/DownloadSponsor.mm \
 	Tweak/Features/Downloads/DownloadHooks.mm \
 	Tweak/Features/Downloads/PlaylistDownloader.mm \
@@ -119,7 +122,7 @@ YTKACE_CFLAGS += -Wno-module-import-in-extern-c
 YTKACE_CFLAGS += -I$(THEOS_PROJECT_DIR)/Vendor/FFmpeg/include
 YTKACE_CFLAGS += -I$(THEOS_PROJECT_DIR)/Vendor/DuoKit
 YTKACE_CCFLAGS = -std=c++17
-YTKACE_FRAMEWORKS = Foundation UIKit JavaScriptCore AVFoundation AVKit AudioToolbox Photos QuartzCore MediaPlayer Security SystemConfiguration UniformTypeIdentifiers VideoToolbox CoreMedia
+YTKACE_FRAMEWORKS = Foundation UIKit JavaScriptCore AVFoundation AVKit AudioToolbox Photos QuartzCore MediaPlayer Security SystemConfiguration UniformTypeIdentifiers VideoToolbox CoreMedia AuthenticationServices
 YTKACE_LIBRARIES = z icucore
 YTKACE_LDFLAGS = -Wl,-install_name,@rpath/YTKACE.dylib
 YTKACE_LDFLAGS += $(THEOS_PROJECT_DIR)/Vendor/FFmpeg/lib/libavformat.a
